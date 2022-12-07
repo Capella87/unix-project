@@ -1,0 +1,10 @@
+out/
+scratchpad/
+.vscode
+/bin
+
+package.json
+
+*.dll
+*.exe
+*.out
