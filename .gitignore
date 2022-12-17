@@ -2,6 +2,7 @@ out/
 scratchpad/
 .vscode
 /bin
+/build
 
 package.json
 
