@@ -34,6 +34,14 @@ void handler(int signo)
 {
 }
 
+void createDataFile(char *filename, int *data)
+{
+
+    int out = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
+    write(out, data, sizeof(data));
+    close(out);
+}
+
 int main(int argc, char** argv)
 {
     // for Manage signal 
