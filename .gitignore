@@ -3,6 +3,8 @@ scratchpad/
 .vscode
 /bin
 /build
+/cmake-build-debug
+/.idea
 
 package.json
 
