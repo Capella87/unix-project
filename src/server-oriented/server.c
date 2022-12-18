@@ -9,8 +9,10 @@
 #include <sys/wait.h>
 #include <sys/shm.h>
 #include <fcntl.h>
+#include <sys/un.h>
 #include <stdbool.h>
 
+#define GROUP_NUM 4
 #define SOCKET_NAME "root"
 #define KB_1_INDEX 1024 * 1
 #define KB_1_SIZE 4 * 1024 * 1
@@ -28,19 +30,20 @@ typedef struct PACKET
     int data[KB_1_INDEX];
 } packet;
 
-typedef struct collection
-{
-    bool check[4];
-    size_t dataSize;
-    int data[KB_1_SIZE * 4];
-} collection;
-
 void handler(int signo)
 {
 }
 
 int main(int argc, char** argv)
 {
+    // Making Shared Memory and be suspended to wait
+    
+    int shmid = shmget(123, sizeof(packet), IPC_CREAT);
+    packet* pkt = shmat(shmid, (void*)0, 0);
+
+    pkt->dataSize = KB_1_SIZE;
+    pkt->dataIndex = KB_1_INDEX;
+
 
 
     sigset_t set;
