@@ -28,7 +28,7 @@ typedef struct PACKET
     int data[KB_1_INDEX];
 } packet;
 
-void main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
     
     system("clear");

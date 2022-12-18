@@ -36,31 +36,33 @@ void handler(int signo)
 
 int main(int argc, char** argv)
 {
+    sigset_t set;
+    sigfillset(&set);
+    sigdelset(&set, SIGUSR1);
+    struct sigaction sat;
+    sat.sa_flags = 0;
+    sigemptyset(&sat.sa_mask);
+    sat.sa_handler = handler;
+
+    // Create a shared memory to share their pid
+    int pid_shmid = shmget(234, sizeof(pid_t) * 2, IPC_CREAT | 0644);
+    pid_t* pid_space = shmat(pid_shmid, 0, 0);
+    pid_space[0] = getpid();
+
+    sigaction(SIGUSR1, &sat, (void*)0);
+    printf("Run the data_provider and server_client in order.\n");
+    sigsuspend(&set);
+
     // Making Shared Memory and be suspended to wait
-    
-    int shmid = shmget(123, sizeof(packet), IPC_CREAT);
+    int shmid = shmget(123, sizeof(packet), IPC_CREAT | 0644);
     packet* pkt = shmat(shmid, (void*)0, 0);
 
     pkt->dataSize = KB_1_SIZE;
     pkt->dataIndex = KB_1_INDEX;
 
-
-
-    sigset_t set;
     printf("PID = %d\n", getpid());
     printf("Waiting for gathering all data at client #0...\n");
-    sigfillset(&set);
-    sigdelset(&set, SIGUSR1);
-    struct sigaction sat;
-
-    sat.sa_flags = 0;
-    sigemptyset(&sat.sa_mask);
-    sat.sa_handler = handler;
-    sigaction(SIGUSR1, &sat, (void*)0);
     sigsuspend(&set);
-
-    int shmid = shmget(123, sizeof(collection), IPC_PRIVATE);
-    collection* location = shmat(shmid, (void*)0, 0);
     
     pid_t pids[2] = { getpid(), fork() };
 
@@ -68,7 +70,7 @@ int main(int argc, char** argv)
     {
         int fd = open("received1", O_CREAT | O_RDWR, 0644);
 
-        write(fd, location->data, location->dataSize / 2);
+        write(fd, pkt->data, pkt->dataSize / 2);
         close(fd);
         puts("done.");
         wait((void*)0);
@@ -76,10 +78,9 @@ int main(int argc, char** argv)
     else
     {
         int fd = open("received2", O_CREAT | O_RDWR, 0644);
-        lseek(fd, 4 + atoi(argv[2]) / 2, SEEK_SET);
-        write(fd, location->data + location->dataSize / 2, location->dataSize / 2);
+        write(fd, pkt->data + pkt->dataIndex / 2, pkt->dataSize / 2 );
         close(fd);
-        puts("done");
+        puts("done.");
     }
 
     return 0;

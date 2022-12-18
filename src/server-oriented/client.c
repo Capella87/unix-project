@@ -34,11 +34,11 @@ void handler(int signo)
 {
 }
 
-void createDataFile(char *filename, int *data)
+void createDataFile(char *filename, int *data, int size)
 {
 
     int out = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
-    write(out, data, sizeof(data));
+    write(out, data, size);
     close(out);
 }
 
@@ -55,6 +55,13 @@ int main(int argc, char** argv)
     sigfillset(&set);
     sigdelset(&set, SIGUSR1);
 
+    // To get server's pid
+    int pid_shmid = shmget(234, sizeof(pid_t) * 2, 0);
+    pid_t* pid_space = shmat(pid_shmid, (void*)0, 0);
+    pid_t server_pid = pid_space[0];
+
+    kill(pid_space[0], SIGUSR1);
+
     // for Loop
     int i, j;
 
@@ -62,7 +69,10 @@ int main(int argc, char** argv)
     packet in;
     int packetIndex = KB_1_INDEX, packetSize = KB_1_SIZE;
     int *data_0, *data_1, *data_2, *data_3;
-    data_0 = data_1 =data_2 = data_3 = malloc(packetSize / GROUP_NUM);
+    data_0 = (int*)malloc(packetSize / GROUP_NUM);
+    data_1 = (int*)malloc(packetSize / GROUP_NUM);
+    data_2 = (int*)malloc(packetSize / GROUP_NUM);
+    data_3 = (int*)malloc(packetSize / GROUP_NUM);
     
     // for Share data
     int clientId, clen;
@@ -88,19 +98,32 @@ int main(int argc, char** argv)
     packetSize = recv(clientId, (packet *)&in, sizeof(in), 0);
     printf("%d %ld\n", in.dataIndex, in.dataSize);
 
-    for (i = 0; i < in.dataIndex;i++) {
+    for (i = 0, j = 0; i < in.dataIndex; i++)
+    {
         printf(" %d ", i);
-        if (i % 4 == 0) data_0[i] = i;
-        if (i % 4 == 1) data_1[i] = i;
-        if (i % 4 == 2) data_2[i] = i;
-        if (i % 4 == 3) data_3[i] = i;
-    } putchar('\n');
+        switch (i % 4)
+        {
+            case 0:
+                data_0[j] = i;
+                break;
+            case 1:
+                data_1[j] = i;
+                break;
+            case 2:
+                data_2[j] = i;
+                break;
+            case 3:
+                data_3[j++] = i;
+                break;
+        }
+    }
+    putchar('\n');
 
     printf("Create data file\n");
-    createDataFile("data0", data_0);
-    createDataFile("data1", data_1);
-    createDataFile("data2", data_2);
-    createDataFile("data3", data_3);
+    createDataFile("data0", data_0, packetSize / GROUP_NUM);
+    createDataFile("data1", data_1, packetSize / GROUP_NUM);
+    createDataFile("data2", data_2, packetSize / GROUP_NUM);
+    createDataFile("data3", data_3, packetSize / GROUP_NUM);
 
     close(clientId);
 
@@ -109,17 +132,17 @@ int main(int argc, char** argv)
     pid_t children[4] = { getpid(), 0, 0, 0 };
 
 
-    int server_shmid = shmget(123, sizeof(packet), IPC_PRIVATE);
+    int server_shmid = shmget(123, sizeof(packet), 0);
     packet* pkt = shmat(server_shmid, (void*)0, 0);
 
 
-    for (int i = 1; i < 4; i++)
+    for (j = 1; j < 4; j++)
     {
-        children[i] = fork();
+        children[j] = fork();
         
-        if (!children[i]) // child process
+        if (!children[j]) // child process
         {
-            my_number = i;
+            my_number = j;
             sigsuspend(&set);
             break;
         }
@@ -137,7 +160,7 @@ int main(int argc, char** argv)
         int temp;
         
         // Send to the shared memory
-        for (int i = 0; i < count; i++)
+        for (i = 0; i < count; i++)
         {
             read(fd, &temp, sizeof(int));
             pkt->data[i * 4] = temp;
@@ -145,36 +168,38 @@ int main(int argc, char** argv)
 
         close(fd);
 
-        for (int i = 1; i < 4; i++)
+        for (i = 1; i < 4; i++)
         {
             kill(children[i], SIGUSR1);
+            wait((void*)0);
         }
-        while (wait((void*)0) > 0);        // Send to the shared memory of server.
-
-        kill(atoi(argv[2]), SIGUSR1);
+        kill(server_pid, SIGUSR1);
     }
     else
     {
         char name[6] = "data";
-        char numbername[2] = { (char)i + '0', '\0' };
+        char numbername[2] = { (char)my_number + '0', '\0' };
         strcat(name, numbername);
 
         int fd = open(name, O_RDONLY);
         
         int count = pkt->dataIndex / 4;
         int temp;
-        
+
         // Send to the shared memory
-        for (int i = 0; i < count; i++)
+        for (i = 0; i < count; i++)
         {
             read(fd, &temp, sizeof(int));
             pkt->data[i * 4 + my_number] = temp;
         }
 
         close(fd);
-        return 0;
+        exit(0);
     }
-    shmdt(pkt);
+    // shmdt(pid_space);
+    //shmdt(pkt);
+    //shmctl(pid_shmid, IPC_RMID, (void*)0);
+    // shmctl(server_shmid, IPC_RMID, (void*)0);
 
     return 0;
 }
