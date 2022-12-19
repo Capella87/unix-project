@@ -14,3 +14,5 @@ add_executable(client_client "src/client-oriented/client.c")
 
 add_executable(data_provider "src/data-sender.c")
 add_executable(data_validator "src/data-validator.c")
+
+add_executable(packet "src/packet.c")
