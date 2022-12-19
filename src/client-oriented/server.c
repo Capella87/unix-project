@@ -27,7 +27,7 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_1_INDEX / 4];
+    int data[KB_64_INDEX / 4];
 } packet;
 
 void handler(int signo)
@@ -57,13 +57,13 @@ int main(int argc, char** argv)
     int shmid = shmget(123, sizeof(packet), IPC_CREAT | 0644);
     packet* pkt = shmat(shmid, (void*)0, 0);
 
-    pkt->dataSize = KB_1_SIZE / 4;
-    pkt->dataIndex = KB_1_INDEX / 4;
+    pkt->dataSize = KB_64_SIZE / 4;
+    pkt->dataIndex = KB_64_INDEX / 4;
 
     printf("PID = %d\n", getpid());
     printf("Waiting for gathering all data at client #0...\n");
 
-    int dummy[KB_1_INDEX / 2] = { 0, };
+    int dummy[KB_64_INDEX / 2] = { 0, };
 
     int fd = open("received1", O_CREAT | O_RDWR, 0644);
     write(fd, dummy, pkt->dataSize * 2);
@@ -73,7 +73,7 @@ int main(int argc, char** argv)
     close(sfd);
 
     pid_t pids[2] = { getpid(), 0 };
-    int module_idx = KB_1_INDEX / 8;
+    int module_idx = KB_64_INDEX / 8;
 
     int count = 0;
     while (count < 4)

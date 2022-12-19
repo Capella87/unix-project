@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <sys/un.h>
 #include <stdbool.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define GROUP_NUM 4
 #define SOCKET_NAME "root"
@@ -27,7 +29,7 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_1_INDEX];
+    int data[KB_64_INDEX];
 } packet;
 
 void handler(int signo)
@@ -44,6 +46,10 @@ void createDataFile(char *filename, int *data, int size)
 
 int main(int argc, char** argv)
 {
+#ifdef TIMES
+    struct timeval stime, etime;
+    long time_result;
+#endif
     // for Manage signal 
     struct sigaction usrctrl;
     usrctrl.sa_flags = 0;
@@ -67,7 +73,7 @@ int main(int argc, char** argv)
 
     // for Data
     packet in;
-    int packetIndex = KB_1_INDEX, packetSize = KB_1_SIZE;
+    int packetIndex = KB_64_INDEX, packetSize = KB_64_SIZE;
     int *data_0, *data_1, *data_2, *data_3;
     data_0 = (int*)malloc(packetSize / GROUP_NUM);
     data_1 = (int*)malloc(packetSize / GROUP_NUM);
@@ -77,6 +83,10 @@ int main(int argc, char** argv)
     // for Share data
     int clientId, clen;
     struct sockaddr_un cli;
+
+#ifdef TIMES
+    gettimeofday(&stime, (void*)0);
+#endif
 
     printf("======Start input data======\n");
     //printf("N = %d, Amount of Data = %d\n", N, dataSize);
@@ -196,6 +206,12 @@ int main(int argc, char** argv)
         close(fd);
         exit(0);
     }
+#ifdef TIMES
+    gettimeofday(&etime, (void*)0);
+    time_result = etime.tv_usec - stime.tv_usec;
+    printf("Execution Time (parent): %ld ms\n", time_result);
+#endif
+    
     shmdt(pid_space);
     shmdt(pkt);
     shmctl(pid_shmid, IPC_RMID, (void*)0);

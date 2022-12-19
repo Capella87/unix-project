@@ -25,7 +25,7 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_1_INDEX];
+    int data[KB_64_INDEX];
 } packet;
 
 int main(int argc, char** argv)
@@ -49,9 +49,9 @@ int main(int argc, char** argv)
 
     // for Data
     packet in;
-    in.dataIndex = 1024; 
-    in.dataSize = 1024 * 4;
-    for (i = 0; i < KB_1_INDEX; i++) {
+    in.dataIndex = KB_64_INDEX; 
+    in.dataSize = KB_64_SIZE;
+    for (i = 0; i < KB_64_INDEX; i++) {
         in.data[i] = i;
         //printf(" %d ", in.data[i]);
     }

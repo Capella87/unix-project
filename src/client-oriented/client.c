@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <sys/ipc.h>
 #include <signal.h>
@@ -11,6 +12,8 @@
 #include <fcntl.h>
 #include <sys/un.h>
 #include <stdbool.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define GROUP_NUM 4
 #define SOCKET_NAME "root"
@@ -27,7 +30,7 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_1_INDEX / 4];
+    int data[KB_64_INDEX / 4];
 } packet;
 
 void handler(int signo)
@@ -44,6 +47,11 @@ void createDataFile(char *filename, int *data, int size)
 
 int main(int argc, char** argv)
 {
+#ifdef TIMES
+    struct timespec before, after;
+
+#endif
+
     // for Manage signal
     struct sigaction usrctrl;
     usrctrl.sa_flags = 0;
@@ -67,7 +75,7 @@ int main(int argc, char** argv)
 
     // for Data
     packet in;
-    int packetIndex = KB_1_INDEX, packetSize = KB_1_SIZE;
+    int packetIndex = KB_64_INDEX, packetSize = KB_64_SIZE;
     int *data_0, *data_1, *data_2, *data_3;
     data_0 = (int*)malloc(packetSize);
     data_1 = (int*)malloc(packetSize);
@@ -77,6 +85,10 @@ int main(int argc, char** argv)
     // for Share data
     int clientId, clen;
     struct sockaddr_un cli;
+
+#ifdef TIMES
+    gettimeofday(&stime, (void*)0);
+#endif
 
     printf("======Start input data======\n");
     //printf("N = %d, Amount of Data = %d\n", N, dataSize);
@@ -100,7 +112,7 @@ int main(int argc, char** argv)
 
     for (i = 0, j = 0; i < in.dataIndex; i++)
     {
-        printf(" %d ", i);
+        // printf(" %d ", i);
         switch (i % 4)
         {
             case 0:
@@ -198,6 +210,13 @@ int main(int argc, char** argv)
 
         exit(0);
     }
+
+#ifdef TIMES
+    gettimeofday(&etime, (void*)0);
+    time_result = (etime.tv_usec - stime.tv_usec) / 1000000.0; + etime.tv_sec - stime.tv_sec;
+    printf("Execution Time (parent): %.6lf ms\n", time_result);
+#endif
+    
     shmdt(pid_space);
     shmdt(pkt);
     shmctl(pid_shmid, IPC_RMID, (void*)0);
