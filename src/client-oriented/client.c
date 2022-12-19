@@ -30,14 +30,32 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_64_INDEX / 4];
+    int data[KB_256_INDEX / 4];
 } packet;
 
 void handler(int signo)
 {
 }
 
-void createDataFile(char *filename, int *data, int size)
+struct timespec diff(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+
+    if ((end.tv_nsec-start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec-1;
+        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    }
+    else 
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec;
+        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+    }
+    return temp;
+}
+
+
+void createDataFile(char* filename, int* data, int size)
 {
 
     int out = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
@@ -48,8 +66,8 @@ void createDataFile(char *filename, int *data, int size)
 int main(int argc, char** argv)
 {
 #ifdef TIMES
-    struct timespec before, after;
-
+    struct timespec start, end, result;
+    clock_gettime(CLOCK_REALTIME, &start);
 #endif
 
     // for Manage signal
@@ -75,8 +93,8 @@ int main(int argc, char** argv)
 
     // for Data
     packet in;
-    int packetIndex = KB_64_INDEX, packetSize = KB_64_SIZE;
-    int *data_0, *data_1, *data_2, *data_3;
+    int packetIndex = KB_256_INDEX, packetSize = KB_256_SIZE;
+    int* data_0, * data_1, * data_2, * data_3;
     data_0 = (int*)malloc(packetSize);
     data_1 = (int*)malloc(packetSize);
     data_2 = (int*)malloc(packetSize);
@@ -86,9 +104,6 @@ int main(int argc, char** argv)
     int clientId, clen;
     struct sockaddr_un cli;
 
-#ifdef TIMES
-    gettimeofday(&stime, (void*)0);
-#endif
 
     printf("======Start input data======\n");
     //printf("N = %d, Amount of Data = %d\n", N, dataSize);
@@ -98,16 +113,16 @@ int main(int argc, char** argv)
     clientId = socket(AF_UNIX, SOCK_STREAM, 0);
 
     printf("Bind socket\n");
-    memset((char *)&cli, 0, sizeof(struct sockaddr_un));
+    memset((char*)&cli, 0, sizeof(struct sockaddr_un));
     cli.sun_family = AF_UNIX;
     strcpy(cli.sun_path, SOCKET_NAME);
     clen = sizeof(cli.sun_family) + strlen(cli.sun_path);
 
     printf("Connect Server ...\n");
-    connect(clientId, (struct sockaddr *)&cli, clen);
+    connect(clientId, (struct sockaddr*)&cli, clen);
 
     printf("Receive data from input\n");
-    packetSize = recv(clientId, (packet *)&in, sizeof(in), 0);
+    packetSize = recv(clientId, (packet*)&in, sizeof(in), 0);
     printf("%d %ld\n", in.dataIndex, in.dataSize);
 
     for (i = 0, j = 0; i < in.dataIndex; i++)
@@ -115,18 +130,18 @@ int main(int argc, char** argv)
         // printf(" %d ", i);
         switch (i % 4)
         {
-            case 0:
-                data_0[j] = i;
-                break;
-            case 1:
-                data_1[j] = i;
-                break;
-            case 2:
-                data_2[j] = i;
-                break;
-            case 3:
-                data_3[j++] = i;
-                break;
+        case 0:
+            data_0[j] = i;
+            break;
+        case 1:
+            data_1[j] = i;
+            break;
+        case 2:
+            data_2[j] = i;
+            break;
+        case 3:
+            data_3[j++] = i;
+            break;
         }
     }
     putchar('\n');
@@ -212,11 +227,11 @@ int main(int argc, char** argv)
     }
 
 #ifdef TIMES
-    gettimeofday(&etime, (void*)0);
-    time_result = (etime.tv_usec - stime.tv_usec) / 1000000.0; + etime.tv_sec - stime.tv_sec;
-    printf("Execution Time (parent): %.6lf ms\n", time_result);
+    clock_gettime(CLOCK_REALTIME, &end);
+    result = diff(start, end);
+
+    printf("Elapsed Time : %ld.%ld sec\n", result.tv_sec, result.tv_nsec);
 #endif
-    
     shmdt(pid_space);
     shmdt(pkt);
     shmctl(pid_shmid, IPC_RMID, (void*)0);

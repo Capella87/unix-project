@@ -11,6 +11,9 @@
 #include <fcntl.h>
 #include <sys/un.h>
 #include <stdbool.h>
+#include <sys/times.h>
+#include <time.h>
+#include <sys/time.h>
 
 #define GROUP_NUM 4
 #define SOCKET_NAME "root"
@@ -27,11 +30,28 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_64_INDEX / 4];
+    int data[KB_256_INDEX / 4];
 } packet;
 
 void handler(int signo)
 {
+}
+
+struct timespec diff(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+
+    if ((end.tv_nsec-start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec-1;
+        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    }
+    else 
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec;
+        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+    }
+    return temp;
 }
 
 int main(int argc, char** argv)
@@ -57,13 +77,13 @@ int main(int argc, char** argv)
     int shmid = shmget(123, sizeof(packet), IPC_CREAT | 0644);
     packet* pkt = shmat(shmid, (void*)0, 0);
 
-    pkt->dataSize = KB_64_SIZE / 4;
-    pkt->dataIndex = KB_64_INDEX / 4;
+    pkt->dataSize = KB_256_SIZE / 4;
+    pkt->dataIndex = KB_256_INDEX / 4;
 
     printf("PID = %d\n", getpid());
     printf("Waiting for gathering all data at client #0...\n");
 
-    int dummy[KB_64_INDEX / 2] = { 0, };
+    int dummy[KB_256_INDEX / 2] = { 0, };
 
     int fd = open("received1", O_CREAT | O_RDWR, 0644);
     write(fd, dummy, pkt->dataSize * 2);
@@ -72,8 +92,13 @@ int main(int argc, char** argv)
     write(sfd, dummy, pkt->dataSize * 2);
     close(sfd);
 
+#ifdef TIMES
+    struct timespec start, end, result;
+    clock_gettime(CLOCK_REALTIME, &start);
+#endif
+
     pid_t pids[2] = { getpid(), 0 };
-    int module_idx = KB_64_INDEX / 8;
+    int module_idx = KB_256_INDEX / 8;
 
     int count = 0;
     while (count < 4)
@@ -113,6 +138,12 @@ int main(int argc, char** argv)
         }
     }
     puts("Bye");
+#ifdef TIMES
+    clock_gettime(CLOCK_REALTIME, &end);
+    result = diff(start, end);
+
+    printf("Elapsed Time : %ld.%ld sec\n", result.tv_sec, result.tv_nsec);
+#endif
 
     return 0;
 }

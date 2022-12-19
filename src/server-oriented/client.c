@@ -44,11 +44,29 @@ void createDataFile(char *filename, int *data, int size)
     close(out);
 }
 
+struct timespec diff(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+
+    if ((end.tv_nsec-start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec-1;
+        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    }
+    else 
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec;
+        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+    }
+    return temp;
+}
+
+
 int main(int argc, char** argv)
 {
 #ifdef TIMES
-    struct timeval stime, etime;
-    long time_result;
+    struct timespec start, end, result;
+    clock_gettime(CLOCK_REALTIME, &start);
 #endif
     // for Manage signal 
     struct sigaction usrctrl;
@@ -83,10 +101,6 @@ int main(int argc, char** argv)
     // for Share data
     int clientId, clen;
     struct sockaddr_un cli;
-
-#ifdef TIMES
-    gettimeofday(&stime, (void*)0);
-#endif
 
     printf("======Start input data======\n");
     //printf("N = %d, Amount of Data = %d\n", N, dataSize);
@@ -207,9 +221,10 @@ int main(int argc, char** argv)
         exit(0);
     }
 #ifdef TIMES
-    gettimeofday(&etime, (void*)0);
-    time_result = etime.tv_usec - stime.tv_usec;
-    printf("Execution Time (parent): %ld ms\n", time_result);
+    clock_gettime(CLOCK_REALTIME, &end);
+    result = diff(start, end);
+
+    printf("Elapsed Time : %ld.%ld sec\n", result.tv_sec, result.tv_nsec);
 #endif
     
     shmdt(pid_space);
