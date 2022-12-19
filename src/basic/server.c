@@ -7,16 +7,16 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
-#include <sys/msg.h>
 #include <sys/shm.h>
 #include <fcntl.h>
 #include <sys/un.h>
-#include <sys/sem.h>
-#include <errno.h>
 #include <stdbool.h>
+#include <sys/times.h>
+#include <time.h>
+#include <sys/time.h>
 
+#define GROUP_NUM 4
 #define SOCKET_NAME "root"
-
 #define KB_1_INDEX 1024 * 1
 #define KB_1_SIZE 4 * 1024 * 1
 
@@ -26,289 +26,141 @@
 #define KB_256_INDEX 1024*256
 #define KB_256_SIZE 4*1024*256
 
-typedef struct PACKET {
-    int id;
+typedef struct PACKET
+{
     int dataIndex;
     size_t dataSize;
-    int data[KB_64_INDEX];
+    int data[KB_64_INDEX / 4];
 } packet;
 
-void handler(int signo) {
+void handler(int signo)
+{
 }
 
-void createDataFile(char * filename, int * data) {
-    int out = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
-    write(out, data, sizeof(data));
-    close(out);
+struct timespec diff(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+
+    if ((end.tv_nsec-start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec-1;
+        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    }
+    else 
+    {
+        temp.tv_sec = end.tv_sec-start.tv_sec;
+        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+    }
+    return temp;
 }
 
-typedef union semun {
-	int val;
-	struct semid_ds *buf;
-	ushort *array;
-}semun;
-
-int initsem() {
-	semun semunarg;
-	int status = 0, semid;
-
-	semid = semget(126, 1, IPC_CREAT | IPC_EXCL | 0600);
-	if (semid == -1) {
-		if (errno == EEXIST)
-			semid = semget(126, 1, 0);
-	}
-	else {
-		semunarg.val = 1;
-		status = semctl(semid, 0, SETVAL, semunarg);
-	}
-
-	if (semid == -1 || status == -1) {
-		perror("initsem");
-		return(-1);
-	}
-	return semid;
-}
-
-int semlock(int semid) {
-	struct sembuf buf;
-
-	buf.sem_num = 0;
-	buf.sem_op = -1;
-	buf.sem_flg = SEM_UNDO;
-	if (semop(semid, &buf, 1) == -1) {
-		perror("semlock failed");
-		exit(1);
-	}
-	return 0;
-}
-
-int semunlock(int semid) {
-	struct sembuf buf;
-
-	buf.sem_num = 0;
-	buf.sem_op = 1;
-	buf.sem_flg = SEM_UNDO;
-	if (semop(semid, &buf, 1) == -1) {
-		perror("semunlock failed");
-		exit(1);
-	}
-	return 0;
-}
-
-int main(int argc, char** argv) {
-
-    system("clear");
-
-    // for Manage signal
-    struct sigaction usrctrl;
-    usrctrl.sa_flags = 0;
-    usrctrl.sa_handler = handler;
-    sigemptyset(&usrctrl.sa_mask);
-    sigaction(SIGUSR1, &usrctrl, (void*)0);
-
+int main(int argc, char** argv)
+{
     sigset_t set;
     sigfillset(&set);
     sigdelset(&set, SIGUSR1);
+    struct sigaction sat;
+    sat.sa_flags = 0;
+    sigemptyset(&sat.sa_mask);
+    sat.sa_handler = handler;
 
-    // for Loop
-    int i, j;
+    // Create a shared memory to share their pid
+    int pid_shmid = shmget(234, sizeof(pid_t) * 3, IPC_CREAT | 0644);
+    pid_t* pid_space = shmat(pid_shmid, 0, 0);
+    pid_space[0] = getpid();
 
-    // for Data
-    packet in;
+    sigaction(SIGUSR1, &sat, (void*)0);
+    printf("Run the data_provider and server_client in order.\n");
+    sigsuspend(&set);
 
-    // for Share data
-    int clientId, clen, pid;
-    struct sockaddr_un cli;
+    // Making Shared Memory and be suspended to wait
+    int shmid_1 = shmget(123, sizeof(packet), IPC_CREAT | 0644);
+    packet* pkt[4];
 
+    pkt[0] = shmat(shmid_1, (void*)0, 0);
 
-    // for semaphore
-    int semid = initsem();
+    int shmid_2 = shmget(124, sizeof(packet), IPC_CREAT | 0644);
+    pkt[1] = shmat(shmid_2, (void*)0, 0);
 
-    printf("======Start Client======\n");
-    pid = getpid();
-    printf("PID : %d\n", pid);
+    int shmid_3 = shmget(125, sizeof(packet), IPC_CREAT | 0644);
+    pkt[2] = shmat(shmid_3, (void*)0, 0);
+    
+    int shmid_4 = shmget(126, sizeof(packet), IPC_CREAT | 0644);
+    pkt[3] = shmat(shmid_4, (void*)0, 0);
 
-    printf("Create Socket\n");
-    clientId = socket(AF_UNIX, SOCK_STREAM, 0);
+    pkt[0]->dataSize = KB_64_SIZE / 4;
+    pkt[0]->dataIndex = KB_64_INDEX / 4;
+    pkt[1]->dataSize = KB_64_SIZE / 4;
+    pkt[1]->dataIndex = KB_64_INDEX / 4;
+    pkt[2]->dataSize = KB_64_SIZE / 4;
+    pkt[2]->dataIndex = KB_64_INDEX / 4;
+    pkt[3]->dataSize = KB_64_SIZE / 4;
+    pkt[3]->dataIndex = KB_64_INDEX / 4;
 
-    memset((char *)&cli, 0, sizeof(struct sockaddr_un));
-    cli.sun_family = AF_UNIX;
-    strcpy(cli.sun_path, SOCKET_NAME);
-    clen = sizeof(cli.sun_family) + strlen(cli.sun_path);
+    printf("PID = %d\n", getpid());
+    printf("Waiting for gathering all data at client #0...\n");
 
-    printf("Connect Server ...\n");
-    connect(clientId, (struct sockaddr *)&cli, clen);
+    int dummy[KB_64_INDEX / 2] = { 0, };
 
-    printf("Receive data from input\n");
-    recv(clientId, (packet *)&in, sizeof(in), 0);
-    printf("%d %d %ld\n", in.id, in.dataIndex, in.dataSize);
+    int fd = open("received1", O_CREAT | O_RDWR, 0644);
+    write(fd, dummy, pkt[0]->dataSize * 2);
+    close(fd);
+    int sfd = open("received2", O_CREAT | O_RDWR, 0644);
+    write(sfd, dummy, pkt[0]->dataSize * 2);
+    close(sfd);
 
-    printf("Finish data Transmisson\n");
+#ifdef TIMES
+    struct timespec start, end, result;
+    clock_gettime(CLOCK_REALTIME, &start);
+#endif
 
-    int serverId, len, sid;
-    struct sockaddr_un ser;
-    printf("======Start data Trasmisson to output======\n");
+    pid_t pids[2] = { getpid(), 0 };
+    int module_idx = KB_64_INDEX / 8;
 
-    printf("Create Socket\n");
-    serverId = socket(AF_UNIX, SOCK_STREAM, 0);
+    int count = 0;
+    while (count < 4)
+    {
+        sigsuspend(&set);
+        pids[1] = fork();
+        if (pids[0] == getpid())
+        {
+            fd = open("received1", O_CREAT | O_RDWR, 0644);
 
-    printf("Bind socket\n");
-    memset((char *)&ser, 0, sizeof(struct sockaddr_un));
-    ser.sun_family = AF_UNIX;
-    strcpy(ser.sun_path, SOCKET_NAME);
-    unlink(ser.sun_path);
-    len = sizeof(ser.sun_family) + strlen(ser.sun_path);
+            lseek(fd, sizeof(int) * pid_space[1], SEEK_SET);
+            for (int i = 0; i < module_idx; i++)
+            {
+                write(fd, &pkt[pid_space[1]]->data[i], sizeof(int));
+                lseek(fd, sizeof(int) * 3, SEEK_CUR);
+            }
+            close(fd);
+            puts("done.");
 
-    bind(serverId, (struct sockaddr *)&ser, len);
-
-    listen(serverId, 5);
-
-    printf("Waiting for Connection ...\n");
-    clientId = accept(serverId, (struct sockaddr *)&cli, &clen);
-    printf("CONNECTION SUCCESS\n");
-
-    // PID 받기
-    int inid;
-    printf("Recieve PID : ");
-    recv(clientId, (int *)&inid, sizeof(int), 0);
-    printf("%d\n", inid);
-
-    // PID 보내기
-    printf("Send PID\n");
-    send(clientId, (int *)&pid, sizeof(int), 0);
-    kill(inid, SIGUSR1);
-
-    int my_number = 0;
-    packet out_0, out_1, out_2, out_3;
-    pid_t children[4] = { getpid(), 0, 0, 0 };
-
-    for (int i = 1; i < 4; i++) {
-
-        children[i] = fork();
-
-        if (!children[i]) { // child process
-            my_number = i;
-            break;
+            wait((void*)0);
+            kill(pid_space[2], SIGUSR1);
+            count++;
         }
+        else
+        {
+            int fd = open("received2", O_CREAT | O_RDWR, 0644);
+            lseek(fd, sizeof(int) * pid_space[1], SEEK_SET);
+            for (int i = module_idx; i < module_idx * 2; i++)
+            {
+                write(fd, &pkt[pid_space[1]]->data[i], sizeof(int));
+                lseek(fd, sizeof(int) * 3, SEEK_CUR);
+            }
+            close(fd);
+            puts("done.");
 
+            exit(0);
+        }
     }
+    puts("Bye");
+#ifdef TIMES
+    clock_gettime(CLOCK_REALTIME, &end);
+    result = diff(start, end);
 
-    if (my_number == 0) {
+    printf("Elapsed Time : %ld.%ld sec\n", result.tv_sec, result.tv_nsec);
+#endif
 
-        int nodeid = getpid();
-        printf("NODE #0 PID : %d\n", nodeid);
-
-        // PID 보내기
-        send(clientId, (int *)&nodeid, sizeof(int), 0);
-        kill(inid, SIGUSR1);
-
-        // DATA 보내기
-        out_0.id = 0;
-        out_0.dataIndex = in.dataIndex / 4;
-        out_0.dataSize = in.dataSize / 4;
-
-        printf("Send NODE #%d Packet", out_0.id);
-        for (i = 0; i < in.dataIndex; i += 4) {
-            out_0.data[i] = i;
-            //printf(" %d ", out_0.data[i]);
-        } putchar('\n');
-        createDataFile("data0", out_0.data);
-
-        send(clientId, (packet *)&out_0, sizeof(in), 0);
-        kill(inid, SIGUSR1);
-
-    }
-
-    /*
-
-    if (my_number == 1) {
-
-        semlock(semid);
-
-        int nodeid = getpid();
-        printf("NODE #1 PID : %d\n", nodeid);
-
-        // PID 보내기
-        send(clientId, (int *)&nodeid, sizeof(int), 0);
-        kill(inid, SIGUSR1);
-        sigsuspend(&set);
-
-        // DATA 보내기
-        kill(inid, SIGUSR1);
-        out_1.id = 1;
-        out_1.dataIndex = in.dataIndex / 4;
-        out_1.dataSize = in.dataSize / 4;
-
-        printf("Send NODE #%d Packet", out_1.id);
-        for (i = 1; i < in.dataIndex; i += 4) {
-            out_1.data[i] = in.data[i];
-            //printf(" %d ", out_1.data[i]);
-        } putchar('\n');
-        createDataFile("data1", out_1.data);
-
-        send(clientId, (packet *)&out_1, sizeof(in), 0);
-        kill(inid, SIGUSR1);
-        semunlock(semid);
-    }
-
-    if (my_number == 2) {
-
-        semlock(semid);
-
-        int nodeid = getpid();
-        printf("NODE #2 PID : %d\n", nodeid);
-
-        // PID 보내기
-        send(clientId, (int *)&nodeid, sizeof(int), 0);
-        sigsuspend(&set);
-
-        // DATA 보내기
-        kill(inid, SIGUSR1);
-        out_2.id = 2;
-        out_2.dataIndex = in.dataIndex / 4;
-        out_2.dataSize = in.dataSize / 4;
-
-        printf("Send NODE #%d Packet", out_2.id);
-        for (i = 2; i < in.dataIndex; i += 4) {
-            out_2.data[i] = in.data[i];
-            //printf(" %d ", out_2.data[i]);
-        } putchar('\n');
-        createDataFile("data2", out_2.data);
-        send(clientId, (packet *)&out_2, sizeof(in), 0);
-        kill(inid, SIGUSR1);
-        semunlock(semid);
-    }
-
-
-    if (my_number == 3) {
-
-        semlock(semid);
-
-        int nodeid = getpid();
-        printf("NODE #3 PID : %d\n", nodeid);
-
-        // PID 보내기
-        send(clientId, (int *)&nodeid, sizeof(int), 0);
-        sigsuspend(&set);
-
-        // DATA 보내기
-        kill(inid, SIGUSR1);
-        out_3.id = 3;
-        out_3.dataIndex = in.dataIndex / 4;
-        out_3.dataSize = in.dataSize / 4;
-
-
-        printf("Send NODE #%d Packet", out_3.id);
-        for (i = 3; i < in.dataIndex; i += 4) {
-            out_3.data[i] = in.data[i];
-            //printf(" %d ", out_3.data[i]);
-        } putchar('\n');
-        createDataFile("data3", out_3.data);
-        send(clientId, (packet *)&out_3, sizeof(in), 0);
-        kill(inid, SIGUSR1);
-
-        semunlock(semid);
-    }
-    */
     return 0;
 }
