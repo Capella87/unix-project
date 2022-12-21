@@ -29,7 +29,7 @@ typedef struct PACKET
 {
     int dataIndex;
     size_t dataSize;
-    int data[KB_64_INDEX];
+    int data[KB_256_INDEX];
 } packet;
 
 void handler(int signo)
@@ -91,7 +91,7 @@ int main(int argc, char** argv)
 
     // for Data
     packet in;
-    int packetIndex = KB_64_INDEX, packetSize = KB_64_SIZE;
+    int packetIndex = KB_256_INDEX, packetSize = KB_256_SIZE;
     int *data_0, *data_1, *data_2, *data_3;
     data_0 = (int*)malloc(packetSize / GROUP_NUM);
     data_1 = (int*)malloc(packetSize / GROUP_NUM);
